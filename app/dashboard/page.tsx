@@ -9,6 +9,7 @@ import { collection, query, where, getDocs, getDoc, doc } from 'firebase/firesto
 import { Button } from '@/components/ui/button';
 import { toast } from 'react-hot-toast';
 import Cookies from 'js-cookie';
+import { useAuth } from '@/hooks/useAuth';
 
 interface AttemptData {
   id: string;
@@ -22,6 +23,7 @@ interface AttemptData {
 }
 
 export default function Dashboard() {
+  useAuth();
   const [loading, setLoading] = useState(true);
   const [userName, setUserName] = useState('');
   const [dashboardData, setDashboardData] = useState<{

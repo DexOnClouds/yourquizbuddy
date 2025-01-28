@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Timer, AlertCircle } from 'lucide-react';
 import Image from 'next/image';
+import { useAuth } from '@/hooks/useAuth';
 
 interface Quiz {
   id: string;
@@ -44,6 +45,7 @@ interface AttemptData {
 }
 
 export default function AttemptQuiz() {
+  useAuth();
   const router = useRouter();
   const [subjects, setSubjects] = useState<string[]>([]);
   const [topics, setTopics] = useState<string[]>([]);
@@ -359,14 +361,17 @@ export default function AttemptQuiz() {
           {currentQuestion.question_type === 'text' ? (
             <p className="text-xl mb-6">{currentQuestion.question}</p>
           ) : (
-            <div className="space-y-4 mb-6">
-              <Image
-                src={currentQuestion.question_image || ''}
-                alt="Question"
-                width={400}
-                height={300}
-                className="max-w-full h-auto rounded-lg"
-              />
+            <div className="flex flex-col items-center mb-6">
+              <p className="text-xl mb-4">{currentQuestion.question}</p>
+              <div className="w-full flex justify-center">
+                <Image
+                  src={currentQuestion.question_image || ''}
+                  alt="Question"
+                  width={600}
+                  height={400}
+                  className="rounded-lg object-contain max-h-[400px]"
+                />
+              </div>
             </div>
           )}
 

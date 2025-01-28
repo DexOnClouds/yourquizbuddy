@@ -7,6 +7,8 @@ import { motion } from 'framer-motion';
 import { Brain, Clock, Target, Trophy, PlusCircle, PlayCircle, PenSquare, Zap } from 'lucide-react';
 import { collection, query, where, getDocs, getDoc, doc } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
+import { toast } from 'react-hot-toast';
+import Cookies from 'js-cookie';
 
 interface AttemptData {
   id: string;
@@ -124,9 +126,13 @@ export default function Dashboard() {
   const handleSignOut = async () => {
     try {
       await auth.signOut();
-      router.push('/auth');
+      // Clear firebase token cookie
+      Cookies.remove('firebase-token');
+      toast.success('Successfully logged out');
+      router.push('/');
     } catch (error) {
       console.error('Error signing out:', error);
+      toast.error('Failed to sign out');
     }
   };
 

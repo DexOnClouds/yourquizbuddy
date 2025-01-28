@@ -1,0 +1,58 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@font-face {
+  font-family: 'StoryChoiceSansSerif';
+  src: url('/fonts/StoryChoiceSansSerif.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Geologica';
+  src: url('/fonts/geologica.woff2') format('woff2');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@layer base {
+  html {
+    @apply bg-[#36393F] text-white;
+  }
+  
+  body {
+    @apply font-secondary;
+  }
+
+  button,p,textarea,input {
+    @apply font-secondary;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-primary;
+  }
+}
+
+.bg-quiz {
+  background-color: #36393F;
+}
+
+.animate-gradient {
+  background-size: 200% 200%;
+  animation: gradient 6s linear infinite;
+}
+
+@keyframes gradient {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}

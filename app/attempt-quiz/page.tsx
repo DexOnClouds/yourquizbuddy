@@ -1,12 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { auth, db } from '@/lib/firebase';
 import { collection, query, where, getDocs, addDoc, doc, getDoc, setDoc } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Timer, AlertCircle } from 'lucide-react';
+import Image from 'next/image';
 
 interface Quiz {
   id: string;
@@ -76,7 +77,7 @@ export default function AttemptQuiz() {
               id: quizDoc.id,
               ...quizDoc.data()
             } as Quiz);
-            
+
             // Resume from last answered question
             const lastAnsweredIndex = attemptData.answers.length - 1;
             setCurrentQuestionIndex(lastAnsweredIndex + 1);
@@ -132,6 +133,58 @@ export default function AttemptQuiz() {
     };
     fetchTopics();
   }, [selectedSubject]);
+
+  // Handle answer submission
+  const handleAnswer = useCallback(async (option: string) => {
+    if (!currentQuiz || !attemptData || !attemptId) return;
+
+    const currentQuestion = currentQuiz.quizdata[currentQuestionIndex];
+    const isCorrect = option === currentQuestion.correct_option;
+    const scoreChange = isCorrect ? 4 : -1;
+    const currentTime = new Date();
+
+    const updatedAttemptData = {
+      ...attemptData,
+      score: attemptData.score + scoreChange,
+      answers: [
+        ...attemptData.answers,
+        {
+          questionIndex: currentQuestionIndex,
+          selectedOption: option,
+          isCorrect,
+          timeTaken: 60 - timeLeft
+        }
+      ]
+    };
+
+    // Update attempt in Firestore
+    await setDoc(doc(db, 'attemptdata', attemptId), updatedAttemptData);
+    setAttemptData(updatedAttemptData);
+    setSelectedOption(option);
+    setShowExplanation(true);
+
+    // If this was the last question, end the quiz
+    if (currentQuestionIndex === currentQuiz.quizdata.length - 1) {
+      const endTime = new Date().toISOString();
+      const finalAttemptData = {
+        ...updatedAttemptData,
+        endTime,
+        totalTimeTaken: Math.floor((new Date(endTime).getTime() - new Date(attemptData.startTime).getTime()) / 1000)
+      };
+      
+      // Update final attempt data
+      await setDoc(doc(db, 'attemptdata', attemptId), finalAttemptData);
+      setAttemptData(finalAttemptData); // Update local state with final data
+      localStorage.removeItem('currentAttemptId');
+    }
+  }, [currentQuiz, attemptData, attemptId, currentQuestionIndex, timeLeft]);
+
+  // Auto-submit when time runs out
+  useEffect(() => {
+    if (timeLeft === 0 && !showExplanation) {
+      handleAnswer('');
+    }
+  }, [timeLeft, showExplanation, handleAnswer]);
 
   // Timer effect
   useEffect(() => {
@@ -189,55 +242,6 @@ export default function AttemptQuiz() {
       
       setAttemptData(newAttemptData);
       setQuizStartTime(new Date(startTime));
-    }
-  };
-
-  const handleAnswer = async (option: string) => {
-    if (!currentQuiz || !attemptData || !attemptId) return;
-
-    const currentQuestion = currentQuiz.quizdata[currentQuestionIndex];
-    const isCorrect = option === currentQuestion.correct_option;
-    const scoreChange = isCorrect ? 4 : -1;
-    const currentTime = new Date();
-
-    const updatedAttemptData = {
-      ...attemptData,
-      score: attemptData.score + scoreChange,
-      answers: [
-        ...attemptData.answers,
-        {
-          questionIndex: currentQuestionIndex,
-          selectedOption: option,
-          isCorrect,
-          timeTaken: 60 - timeLeft
-        }
-      ]
-    };
-
-    // Update attempt in Firestore
-    await setDoc(doc(db, 'attemptdata', attemptId), updatedAttemptData);
-    
-    setAttemptData(updatedAttemptData);
-    setSelectedOption(option);
-    setShowExplanation(true);
-
-    // If this was the last question
-    if (currentQuestionIndex === currentQuiz.quizdata.length - 1) {
-      // Calculate total time taken
-      const totalTimeTaken = Math.floor(
-        (currentTime.getTime() - new Date(attemptData.startTime).getTime()) / 1000
-      );
-
-      const finalAttemptData = {
-        ...updatedAttemptData,
-        endTime: currentTime.toISOString(),
-        totalTimeTaken
-      };
-
-      // Update final attempt data
-      await setDoc(doc(db, 'attemptdata', attemptId), finalAttemptData);
-      setAttemptData(finalAttemptData); // Update local state with final data
-      localStorage.removeItem('currentAttemptId');
     }
   };
 
@@ -356,10 +360,12 @@ export default function AttemptQuiz() {
             <p className="text-xl mb-6">{currentQuestion.question}</p>
           ) : (
             <div className="space-y-4 mb-6">
-              <img
-                src={currentQuestion.question_image}
+              <Image
+                src={currentQuestion.question_image || ''}
                 alt="Question"
-                className="rounded-lg max-h-[300px] object-contain mx-auto"
+                width={400}
+                height={300}
+                className="max-w-full h-auto rounded-lg"
               />
             </div>
           )}
@@ -423,10 +429,12 @@ export default function AttemptQuiz() {
                 </div>
               </div>
               {currentQuestion.explanation_image && (
-                <img
+                <Image
                   src={currentQuestion.explanation_image}
                   alt="Explanation"
-                  className="rounded-lg max-h-[200px] object-contain mx-auto mt-4"
+                  width={400}
+                  height={300}
+                  className="max-w-full h-auto rounded-lg mt-4"
                 />
               )}
               {currentQuestionIndex < currentQuiz.quizdata.length - 1 && (

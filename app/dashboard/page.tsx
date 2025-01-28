@@ -8,17 +8,28 @@ import { Brain, Clock, Target, Trophy, PlusCircle, PlayCircle, PenSquare, Zap } 
 import { collection, query, where, getDocs, getDoc, doc } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
 
+interface AttemptData {
+  id: string;
+  score: number;
+  maxScore: number;
+  startTime: string;
+  subject: string;
+  topic: string;
+  quizId: string;
+  userId: string;
+}
+
 export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [userName, setUserName] = useState('');
-  const [dashboardData, setDashboardData] = useState({
+  const [dashboardData, setDashboardData] = useState<{
     stats: {
-      totalQuizzes: 0,
-      avgScore: 0,
-      attemptsToday: 0
-    },
-    recentAttempts: []
-  });
+      totalQuizzes: number;
+      avgScore: number;
+      attemptsToday: number;
+    };
+    recentAttempts: AttemptData[];
+  } | null>(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -53,9 +64,9 @@ export default function Dashboard() {
       const attempts = attemptSnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
-      }))
+      })) as AttemptData[];
       // Sort attempts by startTime manually
-      .sort((a: any, b: any) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
+      attempts.sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
 
       // Calculate average score
       let totalScore = 0;
@@ -88,7 +99,9 @@ export default function Dashboard() {
             topic: quizData.topic || 'Unknown',
             score: attempt.score,
             maxScore: attempt.maxScore,
-            date: attempt.startTime
+            startTime: attempt.startTime,
+            quizId: attempt.quizId,
+            userId: attempt.userId
           };
         })
       );
@@ -163,7 +176,7 @@ export default function Dashboard() {
               </div>
               <div>
                 <p className="text-sm text-gray-400">Total Quizzes</p>
-                <p className="text-2xl font-semibold">{dashboardData.stats.totalQuizzes}</p>
+                <p className="text-2xl font-semibold">{dashboardData?.stats.totalQuizzes}</p>
               </div>
             </div>
           </motion.div>
@@ -181,7 +194,7 @@ export default function Dashboard() {
               </div>
               <div>
                 <p className="text-sm text-gray-400">Average Score</p>
-                <p className="text-2xl font-semibold">{dashboardData.stats.avgScore}%</p>
+                <p className="text-2xl font-semibold">{dashboardData?.stats.avgScore}%</p>
               </div>
             </div>
           </motion.div>
@@ -199,7 +212,7 @@ export default function Dashboard() {
               </div>
               <div>
                 <p className="text-sm text-gray-400">Attempts Today</p>
-                <p className="text-2xl font-semibold">{dashboardData.stats.attemptsToday}</p>
+                <p className="text-2xl font-semibold">{dashboardData?.stats.attemptsToday}</p>
               </div>
             </div>
           </motion.div>
@@ -228,7 +241,7 @@ export default function Dashboard() {
           </div>
 
           <div className="grid gap-4">
-            {dashboardData.recentAttempts.map((attempt: any) => (
+            {dashboardData?.recentAttempts.map((attempt: AttemptData) => (
               <motion.div
                 key={attempt.id}
                 initial={{ opacity: 0, x: -20 }}
@@ -248,7 +261,7 @@ export default function Dashboard() {
                     <div className="text-right">
                       <p className="text-sm text-gray-400">Date</p>
                       <p className="font-medium">
-                        {new Date(attempt.date).toLocaleDateString()}
+                        {new Date(attempt.startTime).toLocaleDateString()}
                       </p>
                     </div>
                   </div>

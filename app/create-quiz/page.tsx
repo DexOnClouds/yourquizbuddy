@@ -10,6 +10,7 @@ import { motion } from 'framer-motion';
 import { collection, addDoc, query, where, getDocs, setDoc, doc } from 'firebase/firestore';
 import { QuizSetupDialog } from '@/components/quiz-setup-dialog';
 import { uploadToImgBB } from '@/lib/imgbb';
+import Image from 'next/image';
 
 interface QuizQuestion {
   question_type: 'text' | 'image';
@@ -258,17 +259,21 @@ export default function CreateQuiz() {
                       <Upload className="w-4 h-4" />
                       {currentQuestion.question_image ? 'Change Image' : 'Upload Question Image*'}
                     </Button>
-                    {currentQuestion.question_image && (
-                      <img 
-                        src={currentQuestion.question_image} 
-                        alt="Question" 
-                        className="w-32 h-32 object-cover rounded-lg"
-                      />
+                    {currentQuestion.question_type === 'image' && currentQuestion.question_image && (
+                      <div className="mb-4">
+                        <Image
+                          src={currentQuestion.question_image}
+                          alt="Question"
+                          width={400}
+                          height={300}
+                          className="max-w-full h-auto rounded-lg"
+                        />
+                      </div>
+                    )}
+                    {!currentQuestion.question_image && (
+                      <p className="text-sm text-red-400 mt-2">* Required: Please upload an image for the question</p>
                     )}
                   </div>
-                  {!currentQuestion.question_image && (
-                    <p className="text-sm text-red-400 mt-2">* Required: Please upload an image for the question</p>
-                  )}
                 </>
               )}
             </div>
@@ -355,11 +360,15 @@ export default function CreateQuiz() {
                   Upload Explanation Image
                 </Button>
                 {currentQuestion.explanation_image && (
-                  <img 
-                    src={currentQuestion.explanation_image} 
-                    alt="Explanation" 
-                    className="w-20 h-20 object-cover rounded-lg"
-                  />
+                  <div className="mb-4">
+                    <Image
+                      src={currentQuestion.explanation_image}
+                      alt="Explanation"
+                      width={400}
+                      height={300}
+                      className="max-w-full h-auto rounded-lg"
+                    />
+                  </div>
                 )}
               </div>
             </div>
@@ -392,12 +401,16 @@ export default function CreateQuiz() {
                       {q.question_type === 'text' ? (
                         <p>{q.question}</p>
                       ) : (
-                        q.question_image && (
-                          <img 
-                            src={q.question_image} 
-                            alt={`Question ${index + 1}`} 
-                            className="w-32 h-32 object-cover rounded-lg"
-                          />
+                        q.question_type === 'image' && (
+                          <div className="mb-4">
+                            <Image
+                              src={q.question_image || ''}
+                              alt="Question"
+                              width={400}
+                              height={300}
+                              className="max-w-full h-auto rounded-lg"
+                            />
+                          </div>
                         )
                       )}
                       <div className="grid grid-cols-2 gap-2 text-sm">

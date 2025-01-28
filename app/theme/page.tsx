@@ -95,6 +95,9 @@ export default function ThemePage() {
             </div>
           </div>
         </section>
+        <div className="mb-8">
+          <h2 className="text-2xl font-bold mb-4">Let&apos;s make your quiz experience more personal!</h2>
+        </div>
       </div>
     </div>
   );

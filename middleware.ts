@@ -26,5 +26,5 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: [...protectedPaths, ...authPaths],
+  matcher: ['/dashboard', '/create-quiz', '/browse-quizzes', '/auth'],
 };

@@ -6,9 +6,11 @@ import { auth, db } from '@/lib/firebase';
 import { collection, query, where, getDocs, addDoc, doc, getDoc, setDoc } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Timer, AlertCircle } from 'lucide-react';
+import { Timer, Axe, AlertCircle, Notebook, Star, ArrowLeft } from 'lucide-react';
 import Image from 'next/image';
 import { useAuth } from '@/hooks/useAuth';
+import { useAuthGuard } from '@/utils/authGuard';
+import toast from 'react-hot-toast';
 
 interface Quiz {
   id: string;
@@ -23,6 +25,8 @@ interface Quiz {
     explanation: string;
     explanation_image?: string;
     question_score: number;
+    difficulty_level: string;
+    topic: string;
   }>;
 }
 
@@ -33,7 +37,7 @@ interface AttemptData {
   topic: string;
   startTime: string;
   endTime: string;
-  totalTimeTaken: number; // in seconds
+  totalTimeTaken: number;
   score: number;
   maxScore: number;
   answers: Array<{
@@ -44,8 +48,18 @@ interface AttemptData {
   }>;
 }
 
+// Helper function to get difficulty level based on question score
+const getDifficultyLevel = (score: number) => {
+  if (score >= 80) return { label: 'Very Easy', color: 'text-green-400' };
+  if (score >= 40) return { label: 'Easy', color: 'text-emerald-400' };
+  if (score >= -30) return { label: 'Moderate', color: 'text-yellow-400' };
+  if (score >= -70) return { label: 'Hard', color: 'text-orange-400' };
+  return { label: 'Mindfuck', color: 'text-red-400' };
+};
+
 export default function AttemptQuiz() {
   useAuth();
+  useAuthGuard(true);
   const router = useRouter();
   const [subjects, setSubjects] = useState<string[]>([]);
   const [topics, setTopics] = useState<string[]>([]);
@@ -60,6 +74,10 @@ export default function AttemptQuiz() {
   const [showExplanation, setShowExplanation] = useState(false);
   const [isQuizComplete, setIsQuizComplete] = useState(false);
   const [attemptId, setAttemptId] = useState<string | null>(null);
+  const [customQuestionCount, setCustomQuestionCount] = useState<number>(10);
+  const [totalAvailableQuestions, setTotalAvailableQuestions] = useState<number>(0);
+  const [useAllQuestions, setUseAllQuestions] = useState<boolean>(false);
+  const [loading, setLoading] = useState(false);
 
   // Check for existing attempt
   useEffect(() => {
@@ -136,18 +154,72 @@ export default function AttemptQuiz() {
     fetchTopics();
   }, [selectedSubject]);
 
+  // Effect to fetch total available questions when subject changes
+  useEffect(() => {
+    const fetchTotalQuestions = async () => {
+      if (!selectedSubject || selectedTopic !== 'all') {
+        setTotalAvailableQuestions(0);
+        return;
+      }
+
+      try {
+        const q = query(
+          collection(db, 'quizdata'),
+          where('subject', '==', selectedSubject)
+        );
+        const snapshot = await getDocs(q);
+        
+        let total = 0;
+        snapshot.docs.forEach(doc => {
+          const data = doc.data();
+          if (data.quizdata && Array.isArray(data.quizdata)) {
+            total += data.quizdata.length;
+          }
+        });
+        
+        setTotalAvailableQuestions(total);
+        // Set a reasonable default for custom question count
+        setCustomQuestionCount(Math.min(10, total));
+      } catch (error) {
+        console.error('Error fetching total questions:', error);
+        toast.error('Error fetching question count');
+      }
+    };
+
+    fetchTotalQuestions();
+  }, [selectedSubject, selectedTopic]);
+
   // Handle answer submission
   const handleAnswer = useCallback(async (option: string) => {
     if (!currentQuiz || !attemptData || !attemptId) return;
 
     const currentQuestion = currentQuiz.quizdata[currentQuestionIndex];
     const isCorrect = option === currentQuestion.correct_option;
-    const scoreChange = isCorrect ? 4 : -1;
-    const currentTime = new Date();
+    
+    // Update question score
+    const scoreChange = isCorrect ? 10 : -10;
+    const newQuestionScore = Math.min(100, Math.max(-100, currentQuestion.question_score + scoreChange));
+    
+    // Update quiz document with new question score
+    const quizRef = doc(db, 'quizdata', currentQuiz.id);
+    const quizDoc = await getDoc(quizRef);
+    if (quizDoc.exists()) {
+      const quizData = quizDoc.data();
+      const updatedQuizData = {
+        ...quizData,
+        quizdata: quizData.quizdata.map((q: any, index: number) => 
+          index === currentQuestionIndex 
+            ? { ...q, question_score: newQuestionScore }
+            : q
+        )
+      };
+      await setDoc(quizRef, updatedQuizData);
+    }
 
+    // Update attempt data
     const updatedAttemptData = {
       ...attemptData,
-      score: attemptData.score + scoreChange,
+      score: attemptData.score + (isCorrect ? 4 : -1),
       answers: [
         ...attemptData.answers,
         {
@@ -174,10 +246,13 @@ export default function AttemptQuiz() {
         totalTimeTaken: Math.floor((new Date(endTime).getTime() - new Date(attemptData.startTime).getTime()) / 1000)
       };
       
-      // Update final attempt data
-      await setDoc(doc(db, 'attemptdata', attemptId), finalAttemptData);
-      setAttemptData(finalAttemptData); // Update local state with final data
-      localStorage.removeItem('currentAttemptId');
+      // Set a timeout to end the quiz after 3 seconds
+      setTimeout(async () => {
+        await setDoc(doc(db, 'attemptdata', attemptId), finalAttemptData);
+        setAttemptData(finalAttemptData);
+        localStorage.removeItem('currentAttemptId');
+        setIsQuizComplete(true);
+      }, 3000);
     }
   }, [currentQuiz, attemptData, attemptId, currentQuestionIndex, timeLeft]);
 
@@ -207,33 +282,95 @@ export default function AttemptQuiz() {
 
   // Start quiz
   const startQuiz = async () => {
-    if (!selectedSubject || !selectedTopic) return;
+    if (!selectedSubject) {
+      toast.error('Please select a subject');
+      return;
+    }
 
-    const q = query(
-      collection(db, 'quizdata'),
-      where('subject', '==', selectedSubject),
-      where('topic', '==', selectedTopic)
-    );
-    const querySnapshot = await getDocs(q);
-    if (!querySnapshot.empty) {
-      const quizDoc = querySnapshot.docs[0];
-      const quizData = quizDoc.data();
-      setCurrentQuiz({
-        id: quizDoc.id,
-        ...quizData
-      } as Quiz);
+    try {
+      setLoading(true); // Add loading state
+      let quizSnapshot;
+      if (selectedTopic === 'all') {
+        // Query for all topics in the subject
+        const q = query(
+          collection(db, 'quizdata'),
+          where('subject', '==', selectedSubject)
+        );
+        quizSnapshot = await getDocs(q);
+      } else {
+        // Query for specific topic
+        const q = query(
+          collection(db, 'quizdata'),
+          where('subject', '==', selectedSubject),
+          where('topic', '==', selectedTopic)
+        );
+        quizSnapshot = await getDocs(q);
+      }
 
+      if (quizSnapshot.empty) {
+        toast.error('No questions found for the selected criteria');
+        return;
+      }
+
+      let allQuestions: any[] = [];
+      let quizId = '';
+      
+      if (selectedTopic === 'all') {
+        // Combine questions from all topics
+        quizSnapshot.docs.forEach(doc => {
+          const data = doc.data();
+          allQuestions.push(...data.quizdata.map((q: any) => ({
+            ...q,
+            originalTopic: data.topic // Keep track of original topic
+          })));
+        });
+        
+        setTotalAvailableQuestions(allQuestions.length);
+        
+        // Shuffle questions
+        for (let i = allQuestions.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [allQuestions[i], allQuestions[j]] = [allQuestions[j], allQuestions[i]];
+        }
+        
+        // Use either all questions or the custom count
+        if (!useAllQuestions) {
+          const questionLimit = Math.min(customQuestionCount, allQuestions.length);
+          allQuestions = allQuestions.slice(0, questionLimit);
+        }
+        quizId = 'combined_' + Date.now();
+      } else {
+        // Single topic quiz - use all questions
+        const randomQuiz = quizSnapshot.docs[Math.floor(Math.random() * quizSnapshot.docs.length)];
+        const quizData = randomQuiz.data();
+        allQuestions = quizData.quizdata;
+        quizId = randomQuiz.id;
+      }
+
+      // Create the quiz object
+      const quiz: Quiz = {
+        id: quizId,
+        subject: selectedSubject,
+        topic: selectedTopic === 'all' ? 'All Topics' : selectedTopic,
+        quizdata: allQuestions.map((q: any) => ({
+          ...q,
+          question_score: q.question_score || 0,
+          topic: q.originalTopic // Include the topic in question data
+        }))
+      };
+
+      // Start the attempt
       const startTime = new Date().toISOString();
       const newAttemptData: AttemptData = {
         userId: auth.currentUser!.uid,
-        quizId: quizDoc.id,
+        quizId: quizId,
         subject: selectedSubject,
-        topic: selectedTopic,
+        topic: selectedTopic === 'all' ? 'All Topics' : selectedTopic,
         startTime: startTime,
         endTime: '',
         totalTimeTaken: 0,
         score: 0,
-        maxScore: quizData.quizdata.length * 4,
+        maxScore: quiz.quizdata.length * 4,
         answers: []
       };
 
@@ -242,68 +379,173 @@ export default function AttemptQuiz() {
       setAttemptId(attemptRef.id);
       localStorage.setItem('currentAttemptId', attemptRef.id);
       
+      setCurrentQuiz(quiz);
       setAttemptData(newAttemptData);
       setQuizStartTime(new Date(startTime));
+      setTimeLeft(60);
+      setCurrentQuestionIndex(0);
+    } catch (error) {
+      console.error('Error starting quiz:', error);
+      toast.error('Failed to start quiz');
+    } finally {
+      setLoading(false);
     }
   };
 
-  const nextQuestion = () => {
-    setShowExplanation(false);
-    setSelectedOption('');
-    setTimeLeft(60);
-    setCurrentQuestionIndex((prev) => prev + 1);
+  // Handle subject selection
+  const handleSubjectSelect = (subject: string) => {
+    setSelectedSubject(subject);
+    setSelectedTopic('all'); // Default to 'all' when subject changes
+  };
+
+  // Handle topic selection
+  const handleTopicSelect = (topic: string) => {
+    setSelectedTopic(topic);
   };
 
   if (!currentQuiz) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-[#1a1b1f] to-[#2a2d35] text-white p-8">
-        <div className="max-w-md mx-auto space-y-8">
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
-            Attempt Quiz
-          </h1>
+      <div className="min-h-screen bg-gradient-to-br from-[#1a1b1f] to-[#2a2d35] text-white">
+        <header className="bg-[#1a1b1f]/50 backdrop-blur-lg sticky top-0 z-50">
+          <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
+            <Button
+              onClick={() => router.push('/dashboard')}
+              variant="ghost"
+              className="hover:bg-gray-700/95 text-gray-300 flex items-center gap-2"
+            >
+              <ArrowLeft className="w-5 h-5" />
+              Back to Dashboard
+            </Button>
+          </div>
+        </header>
 
-          <div className="space-y-4">
+        <div className="max-w-4xl mx-auto p-8">
+          <div className="space-y-8">
             <div>
-              <label className="text-sm text-gray-400 block mb-2">Subject</label>
-              <select
-                value={selectedSubject}
-                onChange={(e) => setSelectedSubject(e.target.value)}
-                className="w-full bg-[#2d2f36] border border-white/10 rounded-xl p-3 focus:border-blue-500/50 outline-none"
-              >
-                <option value="">Select Subject</option>
-                {subjects.map((subject) => (
-                  <option key={subject} value={subject}>
-                    {subject}
-                  </option>
-                ))}
-              </select>
+              <h1 className="text-3xl font-bold mb-2">Start a Quiz</h1>
+              <p className="text-gray-400">Select a subject and topic to begin</p>
             </div>
 
+            {/* Subjects */}
+            <div className="space-y-4">
+              <h2 className="text-xl font-semibold flex items-center gap-2">
+                <Notebook className="w-5 h-5" />
+                Select Subject
+              </h2>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                {subjects.map((subject) => (
+                  <Button
+                    key={subject}
+                    onClick={() => handleSubjectSelect(subject)}
+                    className={`h-auto py-4 px-6 ${
+                      selectedSubject === subject
+                        ? 'bg-blue-500 hover:bg-blue-600'
+                        : 'bg-gray-800 hover:bg-gray-700'
+                    }`}
+                  >
+                    {subject}
+                  </Button>
+                ))}
+              </div>
+            </div>
+
+            {/* Topics */}
             {selectedSubject && (
-              <div>
-                <label className="text-sm text-gray-400 block mb-2">Topic</label>
-                <select
-                  value={selectedTopic}
-                  onChange={(e) => setSelectedTopic(e.target.value)}
-                  className="w-full bg-[#2d2f36] border border-white/10 rounded-xl p-3 focus:border-blue-500/50 outline-none"
-                >
-                  <option value="">Select Topic</option>
+              <div className="space-y-4">
+                <h2 className="text-xl font-semibold flex items-center gap-2">
+                  <Star className="w-5 h-5" />
+                  Select Topic
+                </h2>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                  <Button
+                    onClick={() => handleTopicSelect('all')}
+                    className={`h-auto py-4 px-6 ${
+                      selectedTopic === 'all'
+                        ? 'bg-green-500 hover:bg-green-600'
+                        : 'bg-gray-800 hover:bg-gray-700'
+                    }`}
+                  >
+                    All Topics
+                  </Button>
                   {topics.map((topic) => (
-                    <option key={topic} value={topic}>
+                    <Button
+                      key={topic}
+                      onClick={() => handleTopicSelect(topic)}
+                      className={`h-auto py-4 px-6 ${
+                        selectedTopic === topic
+                          ? 'bg-blue-500 hover:bg-blue-600'
+                          : 'bg-gray-800 hover:bg-gray-700'
+                      }`}
+                    >
                       {topic}
-                    </option>
+                    </Button>
                   ))}
-                </select>
+                </div>
               </div>
             )}
 
-            <Button
-              onClick={startQuiz}
-              disabled={!selectedSubject || !selectedTopic}
-              className="w-full bg-blue-600 hover:bg-blue-500 mt-4 py-6"
-            >
-              Start Quiz
-            </Button>
+            {/* Question Count */}
+{selectedTopic === 'all' && (
+  <div className="space-y-4 mt-4">
+    <div className="flex items-center space-x-4">
+      <div className="relative inline-block w-14 h-7 select-none transition duration-200 ease-in flex-shrink-0">
+        <input
+          type="checkbox"
+          id="useAllQuestionsSlider"
+          checked={useAllQuestions}
+          onChange={(e) => setUseAllQuestions(e.target.checked)}
+          className="toggle-checkbox absolute w-0 h-0 opacity-0"
+          disabled={loading}
+        />
+        <label
+          htmlFor="useAllQuestionsSlider"
+          className={`toggle-label absolute cursor-pointer top-0 left-0 w-14 h-7 bg-gray-300 rounded-full transition-colors duration-300 ease-in-out 
+            ${useAllQuestions ? 'bg-blue-500' : ''} 
+            ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}
+        >
+          <span 
+            className={`absolute left-1 top-1 w-5 h-5 bg-white rounded-full transition-transform duration-300 ease-in-out
+              ${useAllQuestions ? 'transform translate-x-7' : ''}`}
+          />
+        </label>
+      </div>
+      <span className={`${loading ? 'opacity-50' : ''}`}>
+        Use all available questions {totalAvailableQuestions > 0 ? `(${totalAvailableQuestions} total)` : '(loading...)'}
+      </span>
+    </div>
+
+    {!useAllQuestions && (
+      <div className="flex items-center space-x-2">
+        <label htmlFor="customQuestionCount" className={loading ? 'opacity-50' : ''}>
+          Number of questions:
+        </label>
+        <input
+          type="number"
+          id="customQuestionCount"
+          min="1"
+          max={totalAvailableQuestions}
+          value={customQuestionCount}
+          onChange={(e) => setCustomQuestionCount(Math.min(parseInt(e.target.value) || 1, totalAvailableQuestions))}
+          className="w-20 rounded-md bg-gray-500 border border-gray-300 px-2 py-1 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          disabled={loading}
+        />
+        <span className="text-sm text-gray-500">
+          (Max: {totalAvailableQuestions})
+        </span>
+      </div>
+    )}
+  </div>
+)}
+
+            {/* Start Button */}
+            {selectedSubject && (
+              <Button
+                onClick={startQuiz}
+                className="w-full py-6 text-lg bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700"
+              >
+                {loading ? 'Loading...' : 'Start Quiz'}
+              </Button>
+            )}
           </div>
         </div>
       </div>
@@ -357,111 +599,141 @@ export default function AttemptQuiz() {
         </div>
 
         {/* Question */}
-        <div className="bg-[#2d2f36] border border-white/10 rounded-xl p-6 mb-8">
-          {currentQuestion.question_type === 'text' ? (
-            <p className="text-xl mb-6">{currentQuestion.question}</p>
-          ) : (
-            <div className="flex flex-col items-center mb-6">
-              <p className="text-xl mb-4">{currentQuestion.question}</p>
-              <div className="w-full flex justify-center">
-                <Image
-                  src={currentQuestion.question_image || ''}
-                  alt="Question"
-                  width={600}
-                  height={400}
-                  className="rounded-lg object-contain max-h-[400px]"
-                />
-              </div>
+        <div className="bg-[#2d2f36] rounded-xl p-6 mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <span className="text-sm text-gray-400">
+              Question {currentQuestionIndex + 1} of {currentQuiz.quizdata.length}
+            </span>
+            <div className="flex items-center gap-2">
+              <Timer className="w-4 h-4 text-yellow-400" />
+              <span className="text-sm text-yellow-400">{timeLeft}s</span>
+            </div>
+          </div>
+
+          {/* Topic Badge - Only show in All Topics mode */}
+          {currentQuiz.topic === 'All Topics' && currentQuestion.topic && (
+            <div className="inline-flex items-center gap-1 bg-gray-700/50 text-gray-300 px-2 py-1 rounded text-xs mb-3">
+              <Star className="w-3 h-3" />
+              {currentQuestion.topic}
             </div>
           )}
 
-          {/* Options */}
-          <div className="grid grid-cols-1 gap-4">
-            {currentQuestion.options.map((option, index) => (
-              <button
-                key={index}
-                onClick={() => !selectedOption && handleAnswer(String.fromCharCode(65 + index))}
-                disabled={!!selectedOption}
-                className={`p-4 rounded-xl text-left transition ${
-                  selectedOption
-                    ? String.fromCharCode(65 + index) === selectedOption
-                      ? 'bg-blue-500/20 text-blue-400'
-                      : 'bg-white/5'
-                    : 'bg-white/5 hover:bg-white/10'
-                }`}
-              >
-                {String.fromCharCode(65 + index)}. {option}
-              </button>
-            ))}
-          </div>
-
-          {/* Show Explanation Button */}
-          {selectedOption && !showExplanation && (
-            <Button
-              onClick={() => setShowExplanation(true)}
-              className="w-full mt-6 bg-green-600 hover:bg-green-500"
-            >
-              Show Answer
-            </Button>
+          {/* Question Text or Image */}
+          {currentQuestion.question_type === 'image' ? (
+            <div className="space-y-4">
+              <Image
+                src={currentQuestion.question_image || ''}
+                alt="Question"
+                width={400}
+                height={300}
+                className="rounded-lg mx-auto"
+              />
+              <p className="text-lg font-medium">{currentQuestion.question}</p>
+            </div>
+          ) : (
+            <p className="text-lg font-medium">{currentQuestion.question}</p>
           )}
         </div>
 
-        {/* Explanation */}
-        <AnimatePresence>
-          {showExplanation && (
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 20 }}
-              className="bg-[#2d2f36] border border-white/10 rounded-xl p-6 mb-8"
+        {/* Difficulty Level */}
+        <div className="flex items-center gap-2 mb-4">
+          <Axe className="w-4 h-4" />
+          <span className={`text-sm ${getDifficultyLevel(currentQuestion.question_score).color}`}>
+            Difficulty: {getDifficultyLevel(currentQuestion.question_score).label}
+          </span>
+        </div>
+
+        {/* Options */}
+        <div className="grid grid-cols-1 gap-4">
+          {currentQuestion.options.map((option, index) => (
+            <button
+              key={index}
+              onClick={() => !selectedOption && handleAnswer(String.fromCharCode(65 + index))}
+              disabled={!!selectedOption}
+              className={`p-4 rounded-xl text-left transition ${
+                selectedOption
+                  ? String.fromCharCode(65 + index) === selectedOption
+                    ? 'bg-blue-500/20 text-blue-400'
+                    : 'bg-white/5'
+                  : 'bg-white/5 hover:bg-white/10'
+              }`}
             >
-              <div className="flex items-start gap-3 mb-4">
-                <AlertCircle className="w-5 h-5 text-blue-400 mt-1" />
-                <div>
-                  <h3 className="font-bold text-blue-400">Explanation</h3>
-                  <p className="text-gray-300 mt-2">{currentQuestion.explanation}</p>
-                  <div className="mt-4 p-3 rounded-lg bg-white/5">
-                    <p className="text-sm">
-                      {selectedOption === currentQuestion.correct_option ? (
-                        <span className="text-green-400">Correct! (+4 points)</span>
-                      ) : (
-                        <span className="text-red-400">
-                          Incorrect (-1 point). Correct answer was Option {currentQuestion.correct_option}
-                        </span>
-                      )}
-                    </p>
-                  </div>
+              {String.fromCharCode(65 + index)}. {option}
+            </button>
+          ))}
+        </div>
+
+        {/* Show Explanation Button */}
+        {selectedOption && !showExplanation && (
+          <Button
+            onClick={() => setShowExplanation(true)}
+            className="w-full mt-6 bg-green-600 hover:bg-green-500"
+          >
+            Show Answer
+          </Button>
+        )}
+      </div>
+
+      {/* Explanation */}
+      <AnimatePresence>
+        {showExplanation && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 20 }}
+            className="bg-[#2d2f36] border border-white/10 rounded-xl p-6 mb-8"
+          >
+            <div className="flex items-start gap-3 mb-4">
+              <AlertCircle className="w-5 h-5 text-blue-400 mt-1" />
+              <div>
+                <h3 className="font-bold text-blue-400">Explanation</h3>
+                <p className="text-gray-300 mt-2">{currentQuestion.explanation}</p>
+                <div className="mt-4 p-3 rounded-lg bg-white/5">
+                  <p className="text-sm">
+                    {selectedOption === currentQuestion.correct_option ? (
+                      <span className="text-green-400">Correct! (+4 points)</span>
+                    ) : (
+                      <span className="text-red-400">
+                        Incorrect (-1 point). Correct answer was Option {currentQuestion.correct_option}
+                      </span>
+                    )}
+                  </p>
                 </div>
               </div>
-              {currentQuestion.explanation_image && (
-                <Image
-                  src={currentQuestion.explanation_image}
-                  alt="Explanation"
-                  width={400}
-                  height={300}
-                  className="max-w-full h-auto rounded-lg mt-4"
-                />
-              )}
-              {currentQuestionIndex < currentQuiz.quizdata.length - 1 && (
-                <Button
-                  onClick={nextQuestion}
-                  className="w-full bg-blue-600 hover:bg-blue-500 mt-6"
-                >
-                  Next Question
-                </Button>
-              )}
-              {currentQuestionIndex === currentQuiz.quizdata.length - 1 && (
-                <Button
-                  onClick={() => setIsQuizComplete(true)}
-                  className="w-full bg-green-600 hover:bg-green-500 mt-6"
-                >
-                  Show Final Score
-                </Button>
-              )}
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
+            </div>
+            {currentQuestion.explanation_image && (
+              <Image
+                src={currentQuestion.explanation_image}
+                alt="Explanation"
+                width={400}
+                height={300}
+                className="max-w-full h-auto rounded-lg mt-4"
+              />
+            )}
+            {currentQuestionIndex < currentQuiz.quizdata.length - 1 && (
+              <Button
+                onClick={() => {
+                  setShowExplanation(false);
+                  setSelectedOption('');
+                  setTimeLeft(60);
+                  setCurrentQuestionIndex((prev) => prev + 1);
+                }}
+                className="w-full bg-blue-600 hover:bg-blue-500 mt-6"
+              >
+                Next Question
+              </Button>
+            )}
+            {currentQuestionIndex === currentQuiz.quizdata.length - 1 && (
+              <Button
+                onClick={() => setIsQuizComplete(true)}
+                className="w-full bg-green-600 hover:bg-green-500 mt-6"
+              >
+                Show Final Score
+              </Button>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

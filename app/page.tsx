@@ -4,9 +4,11 @@ import Image from "next/image";
 import { Button } from '@/components/ui/button';
 import { useRouter } from 'next/navigation';
 import { Header } from '@/components/header';
+import { useAuth } from '@/hooks/useAuth';
 
 export default function Home() {
   const router = useRouter();
+  useAuth(); // Add auth check
 
   return (
     <div className="flex flex-col min-h-screen bg-gradient-to-b from-blue-500 to-gray-500">

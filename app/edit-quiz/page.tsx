@@ -1,49 +1,44 @@
 'use client';
 
-import { Button } from '@/components/ui/button';
-import { auth, db } from '@/lib/firebase';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState, useRef } from 'react';
-import { Image as ImageIcon, Type, Plus, Trash2, Save, Upload } from 'lucide-react';
-import Cookies from 'js-cookie';
+import { auth, db } from '@/lib/firebase';
+import { collection, doc, getDoc, setDoc } from 'firebase/firestore';
+import { Button } from '@/components/ui/button';
+import { Image as ImageIcon, Type, Plus, Trash2, Save, Upload, PenSquare } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { collection, addDoc, query, where, getDocs, setDoc, doc } from 'firebase/firestore';
-import { QuizSetupDialog } from '@/components/quiz-setup-dialog';
-import { uploadToImgBB } from '@/lib/imgbb';
 import Image from 'next/image';
-import toast from 'react-hot-toast';
-import { useAuth } from '@/hooks/useAuth';
+import { uploadToImgBB } from '@/lib/imgbb';
+import { useAuthGuard } from '@/utils/authGuard';
 
 interface QuizQuestion {
   question_type: 'text' | 'image';
   question: string;
   question_image?: string;
-  question_score: string;
+  question_score: number;
   options: string[];
   correct_option: string;
   explanation: string;
   explanation_image?: string;
 }
 
-export default function CreateQuiz() {
-  useAuth(); // Add auth check
+export default function EditQuiz() {
+  useAuthGuard(true);
   const router = useRouter();
   const [userId, setUserId] = useState<string>('');
   const [subject, setSubject] = useState('');
   const [topic, setTopic] = useState('');
-  const [showSetup, setShowSetup] = useState(true);
+  const [loading, setLoading] = useState(true);
   const [questions, setQuestions] = useState<QuizQuestion[]>([]);
   const [currentQuestion, setCurrentQuestion] = useState<QuizQuestion>({
     question_type: 'text',
     question: '',
-    question_score: '',
+    question_score: 0,
     options: ['', '', '', ''],
     correct_option: '',
     explanation: ''
   });
   const [isUploading, setIsUploading] = useState(false);
-  const [existingQuizId, setExistingQuizId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false); // Add loading state
   const questionImageRef = useRef<HTMLInputElement>(null);
   const explanationImageRef = useRef<HTMLInputElement>(null);
 
@@ -57,6 +52,44 @@ export default function CreateQuiz() {
     });
     return () => unsubscribe();
   }, [router]);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      if (!userId) return; 
+
+      const quizId = localStorage.getItem('editQuizId');
+      if (!quizId) {
+        router.push('/dashboard');
+        return;
+      }
+
+      try {
+        const quizDoc = await getDoc(doc(db, 'quizdata', quizId));
+        if (!quizDoc.exists()) {
+          console.error('Quiz not found');
+          router.push('/dashboard');
+          return;
+        }
+
+        const quizData = quizDoc.data();
+        if (quizData.created_by !== userId) {
+          console.error('Unauthorized access');
+          router.push('/dashboard');
+          return;
+        }
+
+        setSubject(quizData.subject || '');
+        setTopic(quizData.topic || '');
+        setQuestions(quizData.quizdata || []);
+        setLoading(false);
+      } catch (error) {
+        console.error('Error fetching quiz:', error);
+        router.push('/dashboard');
+      }
+    };
+
+    fetchData();
+  }, [userId, router]);
 
   const handleQuestionTypeChange = (type: 'text' | 'image') => {
     setCurrentQuestion({ ...currentQuestion, question_type: type });
@@ -91,23 +124,17 @@ export default function CreateQuiz() {
 
     if (isValid) {
       setQuestions([...questions, currentQuestion]);
-      resetQuestion();
+      setCurrentQuestion({
+        question_type: 'text',
+        question: '',
+        question_score: 0,
+        options: ['', '', '', ''],
+        correct_option: '',
+        explanation: ''
+      });
+      if (questionImageRef.current) questionImageRef.current.value = '';
+      if (explanationImageRef.current) explanationImageRef.current.value = '';
     }
-  };
-
-  const resetQuestion = () => {
-    setCurrentQuestion({
-      question_type: 'text',
-      question: '',
-      question_score: '',
-      options: ['', '', '', ''],
-      correct_option: '',
-      explanation: '',
-      explanation_image: '',
-      question_image: ''
-    });
-    if (questionImageRef.current) questionImageRef.current.value = '';
-    if (explanationImageRef.current) explanationImageRef.current.value = '';
   };
 
   const removeQuestion = (index: number) => {
@@ -115,28 +142,9 @@ export default function CreateQuiz() {
     setQuestions(newQuestions);
   };
 
-  const handleSetupComplete = async (selectedSubject: string, selectedTopic: string) => {
-    setSubject(selectedSubject);
-    setTopic(selectedTopic);
-    
-    // Check for existing quiz
-    const q = query(
-      collection(db, 'quizdata'),
-      where('subject', '==', selectedSubject),
-      where('topic', '==', selectedTopic)
-    );
-    const querySnapshot = await getDocs(q);
-    
-    if (!querySnapshot.empty) {
-      const quizDoc = querySnapshot.docs[0];
-      setExistingQuizId(quizDoc.id);
-      setQuestions(quizDoc.data().quizdata || []);
-    } else {
-      setExistingQuizId(null);
-      setQuestions([]);
-    }
-    
-    setShowSetup(false);
+  const editQuestion = (index: number) => {
+    setCurrentQuestion(questions[index]);
+    removeQuestion(index);
   };
 
   const saveQuiz = async () => {
@@ -146,76 +154,43 @@ export default function CreateQuiz() {
     }
 
     try {
-      const user = auth.currentUser;
-      if (!user) {
-        console.error('No authenticated user');
-        router.push('/auth');
+      const quizId = localStorage.getItem('editQuizId');
+      if (!quizId) {
+        console.error('No quiz ID found');
         return;
       }
 
-      // Validate the score is a number between -100 and 100
-      const score = Number(currentQuestion.question_score);
-      if (isNaN(score) || score < -100 || score > 100) {
-        toast.error('Score must be between -100 and 100');
-        return;
-      }
-
-      if (existingQuizId) {
-        // Update existing quiz - only update necessary fields
-        const updateData = {
-          quizdata: questions,
-          updated_at: new Date().toISOString()
-        };
-        
-        await setDoc(doc(db, 'quizdata', existingQuizId), updateData, { merge: true });
-        console.log('Quiz updated with ID:', existingQuizId);
-      } else {
-        // Create new quiz with all fields
-        const newQuizData = {
-          created_by: userId,
-          subject: subject.trim(),
-          topic: topic.trim(),
-          quizdata: questions.map(q => ({...q, question_score: Number(q.question_score)})),
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        };
-        
-        setLoading(true); // Set loading state to true
-        const docRef = await addDoc(collection(db, 'quizdata'), newQuizData);
-        setLoading(false); // Set loading state to false
-        toast.success('Quiz created successfully!');
-        console.log('Quiz created with ID:', docRef.id);
-      }
-
+      const updateData = {
+        quizdata: questions,
+        updated_at: new Date().toISOString()
+      };
+      
+      await setDoc(doc(db, 'quizdata', quizId), updateData, { merge: true });
+      localStorage.removeItem('editQuizId'); 
       router.push('/dashboard');
     } catch (error) {
-      console.error('Error saving quiz:', error);
+      console.error('Error updating quiz:', error);
     }
   };
 
-  if (showSetup) {
-    return <QuizSetupDialog onComplete={handleSetupComplete} />;
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-[#1a1b1f] to-[#2a2d35] text-white p-8 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+      </div>
+    );
   }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#1a1b1f] to-[#2a2d35] text-white">
       <main className="max-w-4xl mx-auto px-4 py-8 space-y-8">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
-              {existingQuizId ? 'Update Quiz' : 'Create New Quiz'}
-            </h1>
-            <p className="text-gray-400 mt-1">
-              {subject} • {topic}
-            </p>
-          </div>
-          <Button
-            onClick={() => setShowSetup(true)}
-            variant="ghost"
-            className="hover:bg-white/10"
-          >
-            Change Subject/Topic
-          </Button>
+        <div>
+          <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
+            Edit Quiz
+          </h1>
+          <p className="text-gray-400 mt-1">
+            {subject} • {topic}
+          </p>
         </div>
 
         <div className="space-y-6">
@@ -277,7 +252,7 @@ export default function CreateQuiz() {
                       }`}
                     >
                       <Upload className="w-4 h-4" />
-                      {currentQuestion.question_image ? 'Change Image' : 'Upload Question Image*'}
+                      {currentQuestion.question_image ? 'Change Image' : 'Upload Question Image'}
                     </Button>
                     {currentQuestion.question_type === 'image' && currentQuestion.question_image && (
                       <div className="mb-4">
@@ -289,9 +264,6 @@ export default function CreateQuiz() {
                           className="max-w-full h-auto rounded-lg"
                         />
                       </div>
-                    )}
-                    {!currentQuestion.question_image && (
-                      <p className="text-sm text-red-400 mt-2">* Required: Please upload an image for the question</p>
                     )}
                   </div>
                 </>
@@ -326,45 +298,13 @@ export default function CreateQuiz() {
                   </option>
                 ))}
               </select>
-              <div className="flex items-center gap-2">
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  pattern="-?[0-9]*"
-                  placeholder="Score (-100 to +100)"
-                  value={currentQuestion.question_score}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    // Allow empty string or minus sign for typing
-                    if (value === '' || value === '-') {
-                      setCurrentQuestion({ ...currentQuestion, question_score: value === '' ? '' : '-' });
-                      return;
-                    }
-                    const score = Math.max(-100, Math.min(100, Number(value)));
-                    if (!isNaN(score)) {
-                      setCurrentQuestion({ ...currentQuestion, question_score: String(score) });
-                    }
-                  }}
-                  className="w-full bg-[#2d2f36] border border-white/10 rounded-xl p-3 focus:border-blue-500/50 outline-none"
-                />
-                <div className="group">
-                  <div className="p-2 cursor-help">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-400">
-                      <circle cx="12" cy="12" r="10"></circle>
-                      <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
-                      <line x1="12" y1="17" x2="12.01" y2="17"></line>
-                    </svg>
-                  </div>
-                  <div className="absolute mt-2 w-48 p-2 bg-black rounded-lg text-xs invisible group-hover:visible">
-                    <p className="text-gray-300 mb-1">Score determines question difficulty:</p>
-                    <ul className="space-y-1">
-                      <li className="text-green-400">100: Easy</li>
-                      <li className="text-yellow-400">0: Medium</li>
-                      <li className="text-red-400">-100: Hard</li>
-                    </ul>
-                  </div>
-                </div>
-              </div>
+              <input
+                type="number"
+                placeholder="Score"
+                value={currentQuestion.question_score}
+                onChange={(e) => setCurrentQuestion({ ...currentQuestion, question_score: Number(e.target.value) })}
+                className="bg-[#2d2f36] border border-white/10 rounded-xl p-3 focus:border-blue-500/50 outline-none"
+              />
             </div>
 
             {/* Explanation */}
@@ -419,7 +359,7 @@ export default function CreateQuiz() {
         {/* Question List */}
         {questions.length > 0 && (
           <div className="space-y-4">
-            <h2 className="text-xl font-bold">Added Questions</h2>
+            <h2 className="text-xl font-bold">Quiz Questions</h2>
             <div className="space-y-4">
               {questions.map((q, index) => (
                 <motion.div
@@ -460,14 +400,27 @@ export default function CreateQuiz() {
                           </div>
                         ))}
                       </div>
+                      <div className="mt-2">
+                        <p className="text-sm text-gray-400">Score: {q.question_score}</p>
+                        <p className="text-sm text-gray-400">Explanation: {q.explanation}</p>
+                      </div>
                     </div>
-                    <Button
-                      onClick={() => removeQuestion(index)}
-                      variant="ghost"
-                      className="text-red-400 hover:text-red-300 hover:bg-red-400/10"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
+                    <div className="flex gap-2">
+                      <Button
+                        onClick={() => editQuestion(index)}
+                        variant="ghost"
+                        className="text-blue-400 hover:text-blue-300 hover:bg-blue-400/10"
+                      >
+                        <PenSquare className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        onClick={() => removeQuestion(index)}
+                        variant="ghost"
+                        className="text-red-400 hover:text-red-300 hover:bg-red-400/10"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
                   </div>
                 </motion.div>
               ))}
@@ -480,10 +433,9 @@ export default function CreateQuiz() {
           <Button
             onClick={saveQuiz}
             className="w-full bg-blue-600 hover:bg-blue-500 flex items-center justify-center gap-2 py-6"
-            disabled={loading} // Disable button while loading
           >
             <Save className="w-4 h-4" />
-            {existingQuizId ? 'Update Quiz' : 'Save Quiz'}
+            Save Changes
           </Button>
         )}
       </main>

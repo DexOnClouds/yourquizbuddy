@@ -1,11 +1,21 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  output: 'export',
   images: {
     unoptimized: true,
-    domains: ['i.ibb.co'],
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'i.ibb.co',
+        port: '',
+        pathname: '/**',
+      },
+    ],
   },
-  // Enable static exports for Cloudflare Pages
-  output: 'export',
+  // Disable server components since we're using static export
+  experimental: {
+    serverActions: false,
+  },
 }
 
 module.exports = nextConfig

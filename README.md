@@ -4,18 +4,21 @@
 
 # YourQuizBuddy - Your Ultimate Quiz Companion! 🚀
 
-Welcome to YourQuizBuddy, an electrifying quiz platform that transforms learning into an adventure! Whether you're a teacher looking to challenge your students or a knowledge enthusiast wanting to test your skills, YourQuizBuddy is your perfect companion! ✨
+Welcome to YourQuizBuddy, a platform to create custom quizzes and track your progress and learning over time ✨
 
 ## 🌟 Features That'll Blow Your Mind
 
 - 🎯 **Smart Quiz Creation**: Craft quizzes with text and image questions
 - 🎨 **Beautiful UI/UX**: Modern, responsive design that's a feast for the eyes
 - 📊 **Real-time Progress**: Track your performance with stunning analytics
-- 🌈 **Multi-topic Support**: Create quizzes across various subjects
-- ⚡ **Quick Attempts**: Jump right into learning with our streamlined interface
+- 🌈 **Multi-topic Support**: Create quizzes across various subjects according to your choice
 - 🎮 **Interactive Experience**: Engaging animations and smooth transitions
-- 🔄 **Instant Feedback**: Get explanations and scores immediately
+- 🔄 **Instant Feedback**: Add explanation to remind yourself much better
 - 📱 **Fully Responsive**: Perfect on desktop, tablet, or mobile!
+
+<div align="center">
+  <img src="./public/ssyqb.jpg" alt="YourQuizBuddy Logo" width="400"/>
+</div>
 
 ## 🚀 Tech Stack of the Future
 
@@ -26,9 +29,9 @@ Welcome to YourQuizBuddy, an electrifying quiz platform that transforms learning
 
 ## 🎮 Getting Started
 
-1. Clone this beauty:
+1. Clone this repo:
 ```bash
-git clone https://github.com/yourusername/yourquizbuddy.git
+git clone https://github.com/dexonclouds/yourquizbuddy.git
 cd yourquizbuddy
 ```
 
@@ -41,7 +44,7 @@ yarn install
 
 3. Set up your environment variables (more on this below)
 
-4. Fire up the development server:
+4. run the development server:
 ```bash
 npm run dev
 # or
@@ -62,12 +65,14 @@ NEXT_PUBLIC_FIREBASE_PROJECT_ID=your_firebase_project_id
 NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=your_firebase_storage_bucket
 NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=your_messaging_sender_id
 NEXT_PUBLIC_FIREBASE_APP_ID=your_app_id
+NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=your_measurement_id
+# imgbb for storing image free
 NEXT_PUBLIC_IMGBB_API_KEY=ace2e7778b881c86cb6235c8dca8bb47
 ```
 
 ## 🚀 Deployment Options
 
-### ☁️ Vercel Deployment
+### 🔺 Vercel Deployment
 1. Connect your GitHub repository to Vercel
 2. Add your environment variables in Vercel's project settings
 3. Deploy without any extra setup! 🎉
@@ -90,8 +95,14 @@ NEXT_PUBLIC_IMGBB_API_KEY=ace2e7778b881c86cb6235c8dca8bb47
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /{document=**} {
-      allow read, write: if request.auth != null;
+    match /quizdata/{document} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+    
+    match /attemptdata/{document} {
+      allow read: if true;
+      allow write: if request.auth != null;
     }
   }
 }

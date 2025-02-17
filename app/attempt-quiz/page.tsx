@@ -77,6 +77,7 @@ export default function AttemptQuiz() {
   const [customQuestionCount, setCustomQuestionCount] = useState<number>(10);
   const [totalAvailableQuestions, setTotalAvailableQuestions] = useState<number>(0);
   const [useAllQuestions, setUseAllQuestions] = useState<boolean>(false);
+  const [useTimer, setUseTimer] = useState<boolean>(true);
   const [loading, setLoading] = useState(false);
 
   // Check for existing attempt
@@ -89,7 +90,7 @@ export default function AttemptQuiz() {
           const attemptData = attemptDoc.data() as AttemptData;
           setAttemptId(attemptIdFromStorage);
           setAttemptData(attemptData);
-          
+
           // Fetch quiz data
           const quizDoc = await getDoc(doc(db, 'quizdata', attemptData.quizId));
           if (quizDoc.exists()) {
@@ -104,10 +105,10 @@ export default function AttemptQuiz() {
             setSelectedSubject(attemptData.subject);
             setSelectedTopic(attemptData.topic);
             setQuizStartTime(new Date(attemptData.startTime));
-            
+
             // Calculate remaining time for current question
             const now = new Date();
-            const lastAnswerTime = lastAnsweredIndex >= 0 
+            const lastAnswerTime = lastAnsweredIndex >= 0
               ? attemptData.answers[lastAnsweredIndex].timeTaken
               : 0;
             const elapsedTime = Math.floor((now.getTime() - new Date(attemptData.startTime).getTime()) / 1000);
@@ -119,7 +120,7 @@ export default function AttemptQuiz() {
         }
       }
     };
-    
+
     checkExistingAttempt();
   }, []);
 
@@ -157,7 +158,7 @@ export default function AttemptQuiz() {
   // Effect to fetch total available questions when subject changes
   useEffect(() => {
     const fetchTotalQuestions = async () => {
-      if (!selectedSubject || selectedTopic !== 'all') {
+      if (!selectedSubject) {
         setTotalAvailableQuestions(0);
         return;
       }
@@ -165,10 +166,11 @@ export default function AttemptQuiz() {
       try {
         const q = query(
           collection(db, 'quizdata'),
-          where('subject', '==', selectedSubject)
+          where('subject', '==', selectedSubject),
+          where('topic', '==', selectedTopic)
         );
         const snapshot = await getDocs(q);
-        
+
         let total = 0;
         snapshot.docs.forEach(doc => {
           const data = doc.data();
@@ -176,7 +178,7 @@ export default function AttemptQuiz() {
             total += data.quizdata.length;
           }
         });
-        
+
         setTotalAvailableQuestions(total);
         // Set a reasonable default for custom question count
         setCustomQuestionCount(Math.min(10, total));
@@ -195,11 +197,11 @@ export default function AttemptQuiz() {
 
     const currentQuestion = currentQuiz.quizdata[currentQuestionIndex];
     const isCorrect = option === currentQuestion.correct_option;
-    
+
     // Update question score
     const scoreChange = isCorrect ? 10 : -10;
     const newQuestionScore = Math.min(100, Math.max(-100, currentQuestion.question_score + scoreChange));
-    
+
     // Update quiz document with new question score
     const quizRef = doc(db, 'quizdata', currentQuiz.id);
     const quizDoc = await getDoc(quizRef);
@@ -207,8 +209,8 @@ export default function AttemptQuiz() {
       const quizData = quizDoc.data();
       const updatedQuizData = {
         ...quizData,
-        quizdata: quizData.quizdata.map((q: any, index: number) => 
-          index === currentQuestionIndex 
+        quizdata: quizData.quizdata.map((q: any, index: number) =>
+          index === currentQuestionIndex
             ? { ...q, question_score: newQuestionScore }
             : q
         )
@@ -245,27 +247,27 @@ export default function AttemptQuiz() {
         endTime,
         totalTimeTaken: Math.floor((new Date(endTime).getTime() - new Date(attemptData.startTime).getTime()) / 1000)
       };
-      
-      // Set a timeout to end the quiz after 3 seconds
+
+      // Set a timeout to end the quiz after 60 seconds
       setTimeout(async () => {
         await setDoc(doc(db, 'attemptdata', attemptId), finalAttemptData);
         setAttemptData(finalAttemptData);
         localStorage.removeItem('currentAttemptId');
         setIsQuizComplete(true);
-      }, 3000);
+      }, 60000);
     }
   }, [currentQuiz, attemptData, attemptId, currentQuestionIndex, timeLeft]);
 
   // Auto-submit when time runs out
   useEffect(() => {
-    if (timeLeft === 0 && !showExplanation) {
+    if (timeLeft === 0 && !showExplanation && useTimer) {
       handleAnswer('');
     }
-  }, [timeLeft, showExplanation, handleAnswer]);
+  }, [timeLeft, showExplanation, handleAnswer, useTimer]);
 
   // Timer effect
   useEffect(() => {
-    if (!currentQuiz || showExplanation || isQuizComplete) return;
+    if (!currentQuiz || showExplanation || isQuizComplete || !useTimer) return;
 
     const timer = setInterval(() => {
       setTimeLeft((prev) => {
@@ -278,7 +280,7 @@ export default function AttemptQuiz() {
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [currentQuiz, currentQuestionIndex, showExplanation, isQuizComplete]);
+  }, [currentQuiz, currentQuestionIndex, showExplanation, isQuizComplete, useTimer]);
 
   // Start quiz
   const startQuiz = async () => {
@@ -314,7 +316,7 @@ export default function AttemptQuiz() {
 
       let allQuestions: any[] = [];
       let quizId = '';
-      
+
       if (selectedTopic === 'all') {
         // Combine questions from all topics
         quizSnapshot.docs.forEach(doc => {
@@ -324,15 +326,15 @@ export default function AttemptQuiz() {
             originalTopic: data.topic // Keep track of original topic
           })));
         });
-        
+
         setTotalAvailableQuestions(allQuestions.length);
-        
+
         // Shuffle questions
         for (let i = allQuestions.length - 1; i > 0; i--) {
           const j = Math.floor(Math.random() * (i + 1));
           [allQuestions[i], allQuestions[j]] = [allQuestions[j], allQuestions[i]];
         }
-        
+
         // Use either all questions or the custom count
         if (!useAllQuestions) {
           const questionLimit = Math.min(customQuestionCount, allQuestions.length);
@@ -345,6 +347,18 @@ export default function AttemptQuiz() {
         const quizData = randomQuiz.data();
         allQuestions = quizData.quizdata;
         quizId = randomQuiz.id;
+
+        // Shuffle questions
+        for (let i = allQuestions.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [allQuestions[i], allQuestions[j]] = [allQuestions[j], allQuestions[i]];
+        }
+
+        // Use either all questions or the custom count
+        if (!useAllQuestions) {
+          const questionLimit = Math.min(customQuestionCount, allQuestions.length);
+          allQuestions = allQuestions.slice(0, questionLimit);
+        }
       }
 
       // Create the quiz object
@@ -378,7 +392,7 @@ export default function AttemptQuiz() {
       const attemptRef = await addDoc(collection(db, 'attemptdata'), newAttemptData);
       setAttemptId(attemptRef.id);
       localStorage.setItem('currentAttemptId', attemptRef.id);
-      
+
       setCurrentQuiz(quiz);
       setAttemptData(newAttemptData);
       setQuizStartTime(new Date(startTime));
@@ -485,57 +499,87 @@ export default function AttemptQuiz() {
             )}
 
             {/* Question Count */}
-{selectedTopic === 'all' && (
-  <div className="space-y-4 mt-4">
-    <div className="flex items-center space-x-4">
-      <div className="relative inline-block w-14 h-7 select-none transition duration-200 ease-in flex-shrink-0">
-        <input
-          type="checkbox"
-          id="useAllQuestionsSlider"
-          checked={useAllQuestions}
-          onChange={(e) => setUseAllQuestions(e.target.checked)}
-          className="toggle-checkbox absolute w-0 h-0 opacity-0"
-          disabled={loading}
-        />
-        <label
-          htmlFor="useAllQuestionsSlider"
-          className={`toggle-label absolute cursor-pointer top-0 left-0 w-14 h-7 bg-gray-300 rounded-full transition-colors duration-300 ease-in-out 
-            ${useAllQuestions ? 'bg-blue-500' : ''} 
-            ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}
-        >
-          <span 
-            className={`absolute left-1 top-1 w-5 h-5 bg-white rounded-full transition-transform duration-300 ease-in-out
-              ${useAllQuestions ? 'transform translate-x-7' : ''}`}
-          />
-        </label>
-      </div>
-      <span className={`${loading ? 'opacity-50' : ''}`}>
-        Use all available questions {totalAvailableQuestions > 0 ? `(${totalAvailableQuestions} total)` : '(loading...)'}
-      </span>
-    </div>
+            {selectedTopic && (
+              <div className="space-y-4 mt-4">
+                <div className="flex items-center space-x-4">
+                  <div className="relative inline-block w-14 h-7 select-none transition duration-200 ease-in flex-shrink-0">
+                    <input
+                      type="checkbox"
+                      id="useAllQuestionsSlider"
+                      checked={useAllQuestions}
+                      onChange={(e) => setUseAllQuestions(e.target.checked)}
+                      className="toggle-checkbox absolute w-0 h-0 opacity-0"
+                      disabled={loading}
+                    />
+                    <label
+                      htmlFor="useAllQuestionsSlider"
+                      className={`toggle-label absolute cursor-pointer top-0 left-0 w-14 h-7 bg-gray-300 rounded-full transition-colors duration-300 ease-in-out
+                        ${useAllQuestions ? 'bg-blue-500' : ''}
+                        ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    >
+                      <span
+                        className={`absolute left-1 top-1 w-5 h-5 bg-white rounded-full transition-transform duration-300 ease-in-out
+                          ${useAllQuestions ? 'transform translate-x-7' : ''}`}
+                      />
+                    </label>
+                  </div>
+                  <span className={`${loading ? 'opacity-50' : ''}`}>
+                    Use all available questions {totalAvailableQuestions > 0 ? `(${totalAvailableQuestions} total)` : '(loading...)'}
+                  </span>
+                </div>
 
-    {!useAllQuestions && (
-      <div className="flex items-center space-x-2">
-        <label htmlFor="customQuestionCount" className={loading ? 'opacity-50' : ''}>
-          Number of questions:
-        </label>
-        <input
-          type="number"
-          id="customQuestionCount"
-          min="1"
-          max={totalAvailableQuestions}
-          value={customQuestionCount}
-          onChange={(e) => setCustomQuestionCount(Math.min(parseInt(e.target.value) || 1, totalAvailableQuestions))}
-          className="w-20 rounded-md bg-gray-500 border border-gray-300 px-2 py-1 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          disabled={loading}
-        />
-        <span className="text-sm text-gray-500">
-          (Max: {totalAvailableQuestions})
-        </span>
-      </div>
-    )}
-  </div>
-)}
+                {!useAllQuestions && (
+                  <div className="flex items-center space-x-2">
+                    <label htmlFor="customQuestionCount" className={loading ? 'opacity-50' : ''}>
+                      Number of questions:
+                    </label>
+                    <input
+                      type="number"
+                      id="customQuestionCount"
+                      min="1"
+                      max={totalAvailableQuestions}
+                      value={customQuestionCount}
+                      onChange={(e) => setCustomQuestionCount(Math.min(parseInt(e.target.value) || 1, totalAvailableQuestions))}
+                      className="w-20 rounded-md bg-gray-500 border border-gray-300 px-2 py-1 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      disabled={loading}
+                    />
+                    <span className="text-sm text-gray-500">
+                      (Max: {totalAvailableQuestions})
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Timer Toggle */}
+            <div className="space-y-4 mt-4">
+              <div className="flex items-center space-x-4">
+                <div className="relative inline-block w-14 h-7 select-none transition duration-200 ease-in flex-shrink-0">
+                  <input
+                    type="checkbox"
+                    id="useTimerSlider"
+                    checked={useTimer}
+                    onChange={(e) => setUseTimer(e.target.checked)}
+                    className="toggle-checkbox absolute w-0 h-0 opacity-0"
+                    disabled={loading}
+                  />
+                  <label
+                    htmlFor="useTimerSlider"
+                    className={`toggle-label absolute cursor-pointer top-0 left-0 w-14 h-7 bg-gray-300 rounded-full transition-colors duration-300 ease-in-out
+                      ${useTimer ? 'bg-blue-500' : ''}
+                      ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  >
+                    <span
+                      className={`absolute left-1 top-1 w-5 h-5 bg-white rounded-full transition-transform duration-300 ease-in-out
+                        ${useTimer ? 'transform translate-x-7' : ''}`}
+                    />
+                  </label>
+                </div>
+                <span className={`${loading ? 'opacity-50' : ''}`}>
+                  Enable 60s timer
+                </span>
+              </div>
+            </div>
 
             {/* Start Button */}
             {selectedSubject && (

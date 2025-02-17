@@ -164,14 +164,25 @@ export default function AttemptQuiz() {
       }
 
       try {
-        const q = query(
-          collection(db, 'quizdata'),
-          where('subject', '==', selectedSubject),
-          where('topic', '==', selectedTopic)
-        );
+        let q;
+        if (selectedTopic === 'all') {
+          // Query all topics for the selected subject
+          q = query(
+            collection(db, 'quizdata'),
+            where('subject', '==', selectedSubject)
+          );
+        } else {
+          // Query specific topic
+          q = query(
+            collection(db, 'quizdata'),
+            where('subject', '==', selectedSubject),
+            where('topic', '==', selectedTopic)
+          );
+        }
+        
         const snapshot = await getDocs(q);
-
         let total = 0;
+        
         snapshot.docs.forEach(doc => {
           const data = doc.data();
           if (data.quizdata && Array.isArray(data.quizdata)) {
@@ -248,13 +259,13 @@ export default function AttemptQuiz() {
         totalTimeTaken: Math.floor((new Date(endTime).getTime() - new Date(attemptData.startTime).getTime()) / 1000)
       };
 
-      // Set a timeout to end the quiz after 60 seconds
+      // Set a timeout to end the quiz after 3 seconds
       setTimeout(async () => {
         await setDoc(doc(db, 'attemptdata', attemptId), finalAttemptData);
         setAttemptData(finalAttemptData);
         localStorage.removeItem('currentAttemptId');
         setIsQuizComplete(true);
-      }, 60000);
+      }, 3000);
     }
   }, [currentQuiz, attemptData, attemptId, currentQuestionIndex, timeLeft]);
 
@@ -347,12 +358,6 @@ export default function AttemptQuiz() {
         const quizData = randomQuiz.data();
         allQuestions = quizData.quizdata;
         quizId = randomQuiz.id;
-
-        // Shuffle questions
-        for (let i = allQuestions.length - 1; i > 0; i--) {
-          const j = Math.floor(Math.random() * (i + 1));
-          [allQuestions[i], allQuestions[j]] = [allQuestions[j], allQuestions[i]];
-        }
 
         // Use either all questions or the custom count
         if (!useAllQuestions) {

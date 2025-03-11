@@ -84,6 +84,19 @@ export default function CreateQuiz() {
     }
   };
 
+  const handlePaste = async (e: React.ClipboardEvent, type: 'question' | 'explanation') => {
+    const items = Array.from(e.clipboardData.items);
+    for (const item of items) {
+      if (item.type.indexOf('image') !== -1) {
+        e.preventDefault();
+        const file = item.getAsFile();
+        if (file) {
+          await handleImageUpload(file, type);
+        }
+      }
+    }
+  };
+
   const addQuestion = () => {
     const isValid = currentQuestion.question_type === 'text' 
       ? currentQuestion.question && currentQuestion.correct_option
@@ -249,15 +262,14 @@ export default function CreateQuiz() {
           <div className="space-y-4">
             <div className="space-y-2">
               {currentQuestion.question_type === 'text' ? (
-                <>
-                  <label className="text-sm text-gray-400">Question</label>
-                  <textarea
-                    placeholder="Enter your question"
-                    value={currentQuestion.question}
-                    onChange={(e) => setCurrentQuestion({ ...currentQuestion, question: e.target.value })}
-                    className="w-full bg-[#2d2f36] border border-white/10 rounded-xl p-3 focus:border-blue-500/50 outline-none min-h-[100px]"
-                  />
-                </>
+                <textarea
+                  value={currentQuestion.question}
+                  onChange={(e) => setCurrentQuestion({ ...currentQuestion, question: e.target.value })}
+                  onPaste={(e) => handlePaste(e, 'question')}
+                  placeholder="Enter your question here..."
+                  className="w-full p-3 rounded-lg bg-[#2a2d35] border border-gray-600 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                  rows={3}
+                />
               ) : (
                 <>
                   <label className="text-sm text-gray-400">Question Image</label>
@@ -369,12 +381,13 @@ export default function CreateQuiz() {
 
             {/* Explanation */}
             <div className="space-y-2">
-              <label className="text-sm text-gray-400">Explanation</label>
               <textarea
-                placeholder="Explanation for the correct answer"
                 value={currentQuestion.explanation}
                 onChange={(e) => setCurrentQuestion({ ...currentQuestion, explanation: e.target.value })}
-                className="w-full bg-[#2d2f36] border border-white/10 rounded-xl p-3 focus:border-blue-500/50 outline-none min-h-[100px]"
+                onPaste={(e) => handlePaste(e, 'explanation')}
+                placeholder="Enter explanation for the correct answer..."
+                className="w-full p-3 rounded-lg bg-[#2a2d35] border border-gray-600 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                rows={3}
               />
               <div className="flex items-center gap-4">
                 <input

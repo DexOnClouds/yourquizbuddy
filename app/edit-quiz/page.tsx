@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { auth, db } from '@/lib/firebase';
 import { collection, doc, getDoc, setDoc } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
-import { Image as ImageIcon, Type, Plus, Trash2, Save, Upload, PenSquare } from 'lucide-react';
+import { Image as ImageIcon, Type, Plus, Trash2, Save, Upload, PenSquare, Check } from 'lucide-react';
 import { motion } from 'framer-motion';
 import Image from 'next/image';
 import { uploadToImgBB } from '@/lib/imgbb';
@@ -186,6 +186,30 @@ export default function EditQuiz() {
     }
   };
 
+  const quickSave = async () => {
+    if (!subject || !topic || questions.length === 0 || !userId) {
+      console.error('Missing required fields');
+      return;
+    }
+
+    try {
+      const quizId = localStorage.getItem('editQuizId');
+      if (!quizId) {
+        console.error('No quiz ID found');
+        return;
+      }
+
+      const updateData = {
+        quizdata: questions,
+        updated_at: new Date().toISOString()
+      };
+      
+      await setDoc(doc(db, 'quizdata', quizId), updateData, { merge: true });
+    } catch (error) {
+      console.error('Error updating quiz:', error);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-[#1a1b1f] to-[#2a2d35] text-white p-8 flex items-center justify-center">
@@ -197,13 +221,21 @@ export default function EditQuiz() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#1a1b1f] to-[#2a2d35] text-white">
       <main className="max-w-4xl mx-auto px-4 py-8 space-y-8">
-        <div>
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
-            Edit Quiz
-          </h1>
-          <p className="text-gray-400 mt-1">
-            {subject} • {topic}
-          </p>
+        <div className="flex justify-between items-center">
+          <div>
+            <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
+              Edit Quiz
+            </h1>
+            <p className="text-gray-400 mt-1">
+              {subject} • {topic}
+            </p>
+          </div>
+          <Button
+            onClick={quickSave}
+            className="bg-green-600 hover:bg-green-500 flex items-center justify-center gap-2"
+          >
+            <Check className="w-4 h-4" />
+          </Button>
         </div>
 
         <div className="space-y-6">

@@ -34,7 +34,7 @@ export default function EditQuiz() {
     question_type: 'text',
     question: '',
     question_score: 0,
-    options: ['', '', '', ''],
+    options: ['1', '2', '3', '4'],
     correct_option: '',
     explanation: ''
   });
@@ -141,7 +141,7 @@ export default function EditQuiz() {
         question_type: 'text',
         question: '',
         question_score: 0,
-        options: ['', '', '', ''],
+        options: ['1', '2', '3', '4'],
         correct_option: '',
         explanation: ''
       });

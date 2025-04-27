@@ -670,13 +670,21 @@ export default function AttemptQuiz() {
           {/* Question Text or Image */}
           {currentQuestion.question_type === 'image' ? (
             <div className="space-y-4">
-              <Image
-                src={currentQuestion.question_image || ''}
-                alt="Question"
-                width={400}
-                height={300}
-                className="rounded-lg mx-auto"
-              />
+              <div className="min-w-[400px] min-h-[200px] inline-flex justify-center items-center">
+                <Image
+                  src={currentQuestion.question_image || ''}
+                  alt="Question"
+                  width={600}
+                  height={450}
+                  className="rounded-lg object-contain"
+                  style={{
+                    minWidth: '400px',
+                    minHeight: '200px',
+                    maxWidth: '100%',
+                    maxHeight: '600px'
+                  }}
+                />
+              </div>
               <p className="text-lg font-medium">{currentQuestion.question}</p>
             </div>
           ) : (
@@ -751,13 +759,21 @@ export default function AttemptQuiz() {
               </div>
             </div>
             {currentQuestion.explanation_image && (
-              <Image
-                src={currentQuestion.explanation_image}
-                alt="Explanation"
-                width={400}
-                height={300}
-                className="max-w-full h-auto rounded-lg mt-4"
-              />
+              <div className="min-w-[400px] min-h-[200px] inline-flex justify-center items-center mt-4">
+                <Image
+                  src={currentQuestion.explanation_image}
+                  alt="Explanation"
+                  width={600}
+                  height={450}
+                  className="rounded-lg object-contain"
+                  style={{
+                    minWidth: '400px',
+                    minHeight: '200px',
+                    maxWidth: '100%',
+                    maxHeight: '600px'
+                  }}
+                />
+              </div>
             )}
             {currentQuestionIndex < currentQuiz.quizdata.length - 1 && (
               <Button

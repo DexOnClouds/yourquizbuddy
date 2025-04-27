@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { auth, db } from '@/lib/firebase';
 import { collection, doc, getDoc, setDoc } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
-import { Image as ImageIcon, Type, Plus, Trash2, Save, Upload, PenSquare, Check } from 'lucide-react';
+import { Image as ImageIcon, Type, Plus, Trash2, Save, Upload, PenSquare, Check, ChevronDown, ChevronUp } from 'lucide-react';
 import { motion } from 'framer-motion';
 import Image from 'next/image';
 import { uploadToImgBB } from '@/lib/imgbb';
@@ -20,6 +20,7 @@ interface QuizQuestion {
   correct_option: string;
   explanation: string;
   explanation_image?: string;
+  showExplanationImage?: boolean;
 }
 
 export default function EditQuiz() {
@@ -230,12 +231,21 @@ export default function EditQuiz() {
               {subject} • {topic}
             </p>
           </div>
-          <Button
-            onClick={quickSave}
-            className="bg-green-600 hover:bg-green-500 flex items-center justify-center gap-2"
-          >
-            <Check className="w-4 h-4" />
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              onClick={saveQuiz}
+              className="bg-blue-600 hover:bg-blue-500 flex items-center justify-center gap-2"
+            >
+              <Save className="w-4 h-4" />
+              Save Changes
+            </Button>
+            <Button
+              onClick={quickSave}
+              className="bg-green-600 hover:bg-green-500 flex items-center justify-center gap-2"
+            >
+              <Check className="w-4 h-4" />
+            </Button>
+          </div>
         </div>
 
         <div className="space-y-6">
@@ -300,13 +310,21 @@ export default function EditQuiz() {
                     </Button>
                     {currentQuestion.question_type === 'image' && currentQuestion.question_image && (
                       <div className="mb-4">
-                        <Image
-                          src={currentQuestion.question_image}
-                          alt="Question"
-                          width={400}
-                          height={300}
-                          className="max-w-full h-auto rounded-lg"
-                        />
+                        <div className="min-w-[400px] min-h-[200px] inline-flex justify-center items-center">
+                          <Image
+                            src={currentQuestion.question_image}
+                            alt="Question"
+                            width={600}
+                            height={450}
+                            className="rounded-lg object-contain"
+                            style={{
+                              minWidth: '400px',
+                              minHeight: '200px',
+                              maxWidth: '100%',
+                              maxHeight: '600px'
+                            }}
+                          />
+                        </div>
                       </div>
                     )}
                   </div>
@@ -379,13 +397,21 @@ export default function EditQuiz() {
                 </Button>
                 {currentQuestion.explanation_image && (
                   <div className="mb-4">
-                    <Image
-                      src={currentQuestion.explanation_image}
-                      alt="Explanation"
-                      width={400}
-                      height={300}
-                      className="max-w-full h-auto rounded-lg"
-                    />
+                    <div className="min-w-[400px] min-h-[200px] inline-flex justify-center items-center">
+                      <Image
+                        src={currentQuestion.explanation_image}
+                        alt="Explanation"
+                        width={600}
+                        height={450}
+                        className="rounded-lg object-contain"
+                        style={{
+                          minWidth: '400px',
+                          minHeight: '200px',
+                          maxWidth: '100%',
+                          maxHeight: '600px'
+                        }}
+                      />
+                    </div>
                   </div>
                 )}
               </div>
@@ -421,13 +447,21 @@ export default function EditQuiz() {
                       ) : (
                         q.question_type === 'image' && (
                           <div className="mb-4">
-                            <Image
-                              src={q.question_image || ''}
-                              alt="Question"
-                              width={400}
-                              height={300}
-                              className="max-w-full h-auto rounded-lg"
-                            />
+                            <div className="min-w-[400px] min-h-[200px] inline-flex justify-center items-center">
+                              <Image
+                                src={q.question_image || ''}
+                                alt="Question"
+                                width={600}
+                                height={450}
+                                className="rounded-lg object-contain"
+                                style={{
+                                  minWidth: '400px',
+                                  minHeight: '200px',
+                                  maxWidth: '100%',
+                                  maxHeight: '600px'
+                                }}
+                              />
+                            </div>
                           </div>
                         )
                       )}
@@ -447,7 +481,50 @@ export default function EditQuiz() {
                       </div>
                       <div className="mt-2">
                         <p className="text-sm text-gray-400">Score: {q.question_score}</p>
-                        <p className="text-sm text-gray-400">Explanation: {q.explanation}</p>
+                        <div className="text-sm text-gray-400">
+                          <div className="flex items-center gap-1">
+                            <span>Explanation: {q.explanation}</span>
+                            {q.explanation_image && (
+                              <Button
+                                onClick={() => {
+                                  const newQuestions = [...questions];
+                                  newQuestions[index] = {
+                                    ...newQuestions[index],
+                                    showExplanationImage: !newQuestions[index].showExplanationImage
+                                  };
+                                  setQuestions(newQuestions);
+                                }}
+                                variant="ghost"
+                                className="p-0 h-auto hover:bg-transparent"
+                              >
+                                {q.showExplanationImage ? (
+                                  <ChevronUp className="w-4 h-4 text-blue-400" />
+                                ) : (
+                                  <ChevronDown className="w-4 h-4 text-blue-400" />
+                                )}
+                              </Button>
+                            )}
+                          </div>
+                          {q.explanation_image && q.showExplanationImage && (
+                            <div className="mt-2">
+                              <div className="min-w-[400px] min-h-[200px] inline-flex justify-center items-center">
+                                <Image
+                                  src={q.explanation_image}
+                                  alt="Explanation"
+                                  width={600}
+                                  height={450}
+                                  className="rounded-lg object-contain"
+                                  style={{
+                                    minWidth: '400px',
+                                    minHeight: '200px',
+                                    maxWidth: '100%',
+                                    maxHeight: '600px'
+                                  }}
+                                />
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
                     <div className="flex gap-2">
@@ -473,16 +550,7 @@ export default function EditQuiz() {
           </div>
         )}
 
-        {/* Save Quiz */}
-        {questions.length > 0 && (
-          <Button
-            onClick={saveQuiz}
-            className="w-full bg-blue-600 hover:bg-blue-500 flex items-center justify-center gap-2 py-6"
-          >
-            <Save className="w-4 h-4" />
-            Save Changes
-          </Button>
-        )}
+
       </main>
     </div>
   );
